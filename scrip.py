@@ -1,48 +1,32 @@
+from transformers import WhisperProcessor, WhisperForConditionalGeneration
 import sounddevice as sd
 import numpy as np
-import torch
-from transformers import WhisperProcessor, WhisperForConditionalGeneration
-import soundfile as sf
 
 
-def record_audio(duration=10, sample_rate=16000):
-    """Record audio from the microphone for a given duration in mono."""
-    print("Recording...")
-    try:
-        recording = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype='float64')
-        sd.wait()
-        sf.write("recording.wav", recording, sample_rate)
-    except Exception as e:
-        print("An error occurred while recording:", e)
-        return None
-    print("Recording stopped.")
-    return recording
+# 錄製參數
+duration = 45  # 錄製10秒音頻
+sampling_rate = 16000  # 採樣率
 
+# 錄製音頻
+print("開始錄音...")
+audio = sd.rec(int(duration * sampling_rate), samplerate=sampling_rate, channels=1)
+sd.wait()
+print("錄音結束.")
 
-def transcribe_audio(audio_data):
-    if audio_data is None:
-        return "No audio data to transcribe."
+# 將音頻轉換為numpy數組
+audio_array = np.squeeze(audio)
 
-    processor = WhisperProcessor.from_pretrained("openai/whisper-large-v3")
-    model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large-v3")
+# load model and processor
+processor = WhisperProcessor.from_pretrained("openai/whisper-large-v2")
+model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large-v2")
+model.config.forced_decoder_ids = None
 
-    inputs = processor(audio_data, return_tensors="pt", sampling_rate=16000)
-    predicted_ids = model.generate(inputs.input_values)
-    result = processor.batch_decode(predicted_ids, skip_special_tokens=True)
+input_features = processor(audio_array, sampling_rate=sampling_rate, return_tensors="pt").input_features 
 
-    return result
-
-
-def main():
-    # Record audio for 45 seconds
-    audio_data = record_audio()
-
-    # Transcribe the recorded audio
-    if audio_data is not None:
-        transcription = transcribe_audio(audio_data)
-        print("Transcription:\n", transcription)
-    else:
-        print("Failed to record audio.")
-
-if __name__ == "__main__":
-    main()
+# generate token ids
+predicted_ids = model.generate(input_features)
+# decode token ids to text
+transcription = processor.batch_decode(predicted_ids, skip_special_tokens=False)
+print(transcription)
+transcription = processor.batch_decode(predicted_ids, skip_special_tokens=True)
+print(transcription)
